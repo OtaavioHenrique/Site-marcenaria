@@ -373,16 +373,193 @@ form.addEventListener('submit', event => {
   window.location.assign(`https://wa.me/${CONFIG.whatsapp}?text=${encodeURIComponent(message)}`);
 });
 
-// 8. Fade-in progressivo: fallback visível quando a API não existe.
-if ('IntersectionObserver' in window && !reducedMotion.matches) {
+// 8. Antes/depois: mesma geometria para mouse, toque e teclado.
+$$('[data-comparison]').forEach(stage => {
+  const range = $('input[type="range"]', stage);
+  let activePointer = null;
+  function updateComparison(value) {
+    const percentage = Math.max(0, Math.min(100, Math.round(Number(value))));
+    range.value = String(percentage);
+    stage.style.setProperty('--position', `${percentage}%`);
+    range.setAttribute('aria-valuetext', `Antes: ${percentage}%; depois: ${100 - percentage}%.`);
+  }
+  function updateFromPointer(event) {
+    const bounds = stage.getBoundingClientRect();
+    if (bounds.width) updateComparison((event.clientX - bounds.left) / bounds.width * 100);
+  }
+  range.disabled = false;
+  range.addEventListener('input', () => updateComparison(range.value));
+  stage.addEventListener('pointerdown', event => {
+    if (!event.isPrimary || event.button !== 0) return;
+    event.preventDefault();
+    activePointer = event.pointerId;
+    range.focus({ preventScroll: true });
+    stage.setPointerCapture(activePointer);
+    updateFromPointer(event);
+  });
+  stage.addEventListener('pointermove', event => {
+    if (event.pointerId === activePointer) updateFromPointer(event);
+  });
+  function endDrag(event) {
+    if (event.pointerId !== activePointer) return;
+    if (stage.hasPointerCapture(activePointer)) stage.releasePointerCapture(activePointer);
+    activePointer = null;
+  }
+  stage.addEventListener('pointerup', endDrag);
+  stage.addEventListener('pointercancel', endDrag);
+  stage.addEventListener('lostpointercapture', () => { activePointer = null; });
+  updateComparison(range.value);
+});
+
+// 9. FAQ: details/summary nativos e exclusividade também em navegadores antigos.
+const faqItems = $$('.faq-item');
+faqItems.forEach(item => {
+  item.addEventListener('toggle', () => {
+    if (item.open) faqItems.forEach(other => { if (other !== item) other.open = false; });
+  });
+});
+
+// 10. Substituir o bloco anterior de IntersectionObserver por este.
+(() => {
+  const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
+  if (!('IntersectionObserver' in window) || motionPreference.matches) return;
+
+  // Inclui o portfólio sem exigir alterações no HTML.
+  document.querySelectorAll('.portfolio-grid .project').forEach(project => {
+    project.classList.add('reveal');
+  });
+
+  const elements = [...document.querySelectorAll('.reveal')];
+  const order = new Map(elements.map((element, index) => [element, index]));
+
   const observer = new IntersectionObserver(entries => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('is-visible');
-        observer.unobserve(entry.target);
-      }
+    const groups = new Map();
+    const entering = entries
+      .filter(entry => entry.isIntersecting && !entry.target.hidden)
+      .sort((a, b) => order.get(a.target) - order.get(b.target));
+
+    entering.forEach(({ target }) => {
+      const group = target.closest('.process-grid, .portfolio-grid')
+        || target.parentElement;
+      const index = groups.get(group) || 0;
+      groups.set(group, index + 1);
+
+      // O limite evita esperas longas quando muitos itens aparecem juntos.
+      target.style.setProperty('--reveal-delay', `${Math.min(index * 100, 400)}ms`);
+      target.classList.add('is-visible');
+      observer.unobserve(target);
     });
   }, { threshold: 0.08, rootMargin: '0px 0px -25px 0px' });
-  $$('.reveal').forEach(element => observer.observe(element));
+
+  elements.forEach(element => observer.observe(element));
   document.documentElement.classList.add('reveal-ready');
-}
+
+  // Uma mudança de preferência também libera os elementos ainda ocultos.
+  motionPreference.addEventListener('change', event => {
+    if (!event.matches) return;
+    observer.disconnect();
+    document.documentElement.classList.remove('reveal-ready');
+    elements.forEach(element => {
+      element.classList.add('is-visible');
+      element.style.removeProperty('--reveal-delay');
+    });
+  });
+})();
+
+
+// 11. Cursor: ponto imediato e contorno com atraso suave.
+(() => {
+  const dot = document.querySelector('.cursor-dot');
+  const outline = document.querySelector('.cursor-outline');
+  if (!dot || !outline) return;
+
+  const body = document.body;
+  const finePointer = matchMedia('(hover: hover) and (pointer: fine)');
+  const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
+  let targetX = 0, targetY = 0, outlineX = 0, outlineY = 0;
+  let frame = 0, previousTime = 0, active = false;
+
+  const place = (element, x, y) => {
+    element.style.transform =
+      `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
+  };
+
+  function updateHover(element) {
+    body.classList.toggle('cursor-hover', active &&
+      Boolean(element?.closest('a, button, summary')) &&
+      !element.closest(':disabled, [aria-disabled="true"]'));
+  }
+
+  function animate(time) {
+    const elapsed = previousTime ? Math.min(time - previousTime, 64) : 16.67;
+    previousTime = time;
+    const easing = motionPreference.matches ? 1 : 1 - Math.exp(-elapsed / 85);
+    outlineX += (targetX - outlineX) * easing;
+    outlineY += (targetY - outlineY) * easing;
+    const settled = Math.hypot(targetX - outlineX, targetY - outlineY) < 0.1;
+    if (settled) {
+      outlineX = targetX;
+      outlineY = targetY;
+    }
+    place(outline, outlineX, outlineY);
+    frame = settled ? 0 : requestAnimationFrame(animate);
+    if (settled) previousTime = 0;
+  }
+
+  function reset() {
+    active = false;
+    body.classList.remove('cursor-enabled', 'cursor-hover');
+    cancelAnimationFrame(frame);
+    frame = 0;
+    previousTime = 0;
+  }
+
+  document.addEventListener('mousemove', event => {
+    if (!finePointer.matches || event.sourceCapabilities?.firesTouchEvents) return;
+    targetX = event.clientX;
+    targetY = event.clientY;
+    if (!active) {
+      outlineX = targetX;
+      outlineY = targetY;
+      place(outline, outlineX, outlineY);
+      active = true;
+      body.classList.add('cursor-enabled');
+    }
+    place(dot, targetX, targetY);
+    updateHover(event.target);
+    if (!frame) frame = requestAnimationFrame(animate);
+  }, { passive: true });
+
+  document.querySelectorAll('a, button, summary').forEach(element => {
+    element.addEventListener('mouseenter', () => updateHover(element));
+    element.addEventListener('mouseleave', () => body.classList.remove('cursor-hover'));
+  });
+
+  document.documentElement.addEventListener('mouseleave', reset);
+  window.addEventListener('blur', reset);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) reset();
+  });
+  document.addEventListener('pointerdown', event => {
+    if (event.pointerType !== 'mouse') reset();
+  }, { passive: true });
+  finePointer.addEventListener('change', reset);
+  document.addEventListener('scroll', () => {
+    if (active) updateHover(document.elementFromPoint(targetX, targetY));
+  }, { capture: true, passive: true });
+
+  // Mantém o cursor acima do lightbox nativo, que ocupa a camada superior.
+  const dialogs = [...document.querySelectorAll('dialog')];
+  const syncLayer = () => {
+    const host = dialogs.filter(dialog => dialog.open).at(-1) || body;
+    if (dot.parentElement !== host) host.append(dot, outline);
+    if (active) updateHover(document.elementFromPoint(targetX, targetY));
+  };
+  const observer = new MutationObserver(syncLayer);
+  dialogs.forEach(dialog => observer.observe(dialog, {
+    attributes: true, attributeFilter: ['open']
+  }));
+  syncLayer();
+})();
+
+
