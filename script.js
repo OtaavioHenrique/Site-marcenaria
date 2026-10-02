@@ -13,8 +13,7 @@ const CONFIG = Object.freeze({
   telefoneExibicao: '+55 69 8449-8240',
   email: 'fabricademoveiscascavel@hotmail.com',
   endereco: 'Av. Fortaleza, 4250 - Centro, Rolim de Moura - RO, 76940-000',
-  // Referência dos sábados: 03/10/2026 fechado; 10/10/2026 aberto.
-  horario: 'Funcionamento: das 07h às 18h.\nApresentação de projetos: somente à tarde, das 13h30 às 18h.\nSábados alternados: 03/10/2026 fechado e 10/10/2026 aberto, seguindo a alternância semanal.',
+  horario: 'Funcionamento: das 07h às 18h.\nApresentação de projetos: somente à tarde, das 13h30 às 18h.',
   mensagemInicial: 'Olá! Gostaria de conversar sobre móveis planejados.'
 });
 
