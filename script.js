@@ -216,7 +216,7 @@ function showProject(index) {
   lightboxImage.alt = source.alt;
   if (missing) lightboxImage.removeAttribute('src');
   else lightboxImage.src = source.currentSrc || source.src;
-  const title = $('figcaption > span', project).textContent.trim();
+  const title = $('.project-caption > span', project).textContent.trim();
   $('#lightbox-caption').textContent = `${title} · ${activeProject + 1} / ${visible.length}`;
   const quoteLink = $('#lightbox-quote');
   const message = `Olá, vi o projeto ${title} e gostaria de um orçamento`;
@@ -560,5 +560,6 @@ faqItems.forEach(item => {
   }));
   syncLayer();
 })();
+
 
 
